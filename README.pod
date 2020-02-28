@@ -1,0 +1,40 @@
+=head1 NAME
+
+=head1 SYNOPSIS
+
+cloudfront_curl [options] -- [curl options] <URL>
+
+=head1 REQUIRED PACKAGES
+
+=over 4
+
+=item * Getopt::Long (perl-Getopt-Long)
+
+=item * Pod::Usage (perl-Pod-Usage)
+
+=item * JSON (perl-JSON)
+
+=item * Time::HiRes (perl-Time-HiRes)
+
+=item * HTTP::Request (perl-libwww-perl)
+
+=item * LWP::UserAgent (perl-libwww-perl)
+
+=item * URI (perl-URI)
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--help>
+
+Show usage information
+
+=item B<--man>
+
+Show the full manual page.
+
+=back
+

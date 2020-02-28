@@ -1,0 +1,4 @@
+#!/bin/bash
+ROOT=$(readlink -f $(dirname $0)/.. )
+set -x
+podselect $ROOT/cloudfront_curl > $ROOT/README.pod

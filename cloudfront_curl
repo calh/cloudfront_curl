@@ -1,0 +1,528 @@
+#!/usr/bin/perl
+# A curl wrapper to CloudFront PoP edge nodes
+#
+# * Accumulates a list of IP PoP addresses from a RIPE Atlas DNS measurement
+#   using probes around the US
+#
+# * Run a curl call with any extra parameters provided, prepending --resolve to the appropriate
+#   PoP IP address
+#
+# * Grab the x-amz-cf-pop response header, store timings for each PoP
+#
+# * Look up the PoP location 
+#
+# * print out statistics after all HTTP requests are finished
+#
+# * exit with a success/warning/error status if any requests failed
+#
+# Run with --help or --man for more detailed info
+
+use MIME::Base64;
+use Net::DNS;
+use Net::DNS::Packet;
+use Getopt::Long;
+use Pod::Usage;
+use JSON;
+use Time::HiRes qw(usleep nanosleep gettimeofday tv_interval);
+use HTTP::Request;
+use LWP::UserAgent;
+use URI;
+use XML::LibXML;
+
+my $help;
+my $man;
+my $key;
+my $msm_id;
+my $ua;
+my $default_msm_id = 24128306;
+my %ip_list = ();
+my $verbose;
+my $debug;
+my $random;
+my $print_ip_stats;
+my %pop_list = ();
+my $validate_pops;
+# opsview exit codes:
+#  * 0 => success
+#  * 1 => warning
+#  * 2 => error
+my $exit_status = 0;
+my $ip_list_input;
+my $found_http_error = 0;
+
+GetOptions( 'help|?' => \$help,
+  'man' => \$man,
+  'key=s' => \$key,
+  'msm_id=i' => \$msm_id,
+  'v|verbose' => \$verbose,
+  'd|debug' => \$debug,
+  'random' => \$random,
+  'print_ip_stats' => \$print_ip_stats,
+  'print_pop_stats' => \$print_pop_stats,
+  'validate_pops:s' => \$validate_pops,
+  'ip_list=s' => \$ip_list_input
+) or pod2usage(2);
+pod2usage(1) if $help;
+pod2usage(-exitstatus => 1, -verbose => 2) if $man;
+
+sub debug($);
+sub verbose($);
+
+init_args();
+
+get_ip_list();
+
+foreach my $ip (keys %ip_list)
+{
+  verbose "$ip";
+  run_curl($ip);
+}
+
+check_results();
+
+print_statistics();
+
+print_errors();
+
+exit($exit_status);
+
+######## functions ############
+
+# init parameters
+sub init_args
+{
+  $ua = LWP::UserAgent->new( keep_alive => 1 );
+  $msm_id = $default_msm_id unless ($msm_id);
+}
+
+# Scrape this page which has an updated list of PoP names.
+# (The json file they provide isn't as detailed)
+sub get_pop_list
+{
+  return unless ( defined $validate_pops );
+  # Path provided to list in a file
+  if ( $validate_pops ne "" )
+  {
+    %pop_list = %{ load_text_file($validate_pops) };
+    return;
+  }
+
+  my $url = "https://www.feitsui.com/en/blog/page/3";
+  my $req = HTTP::Request->new(GET => $url);
+  my $resp = $ua->request($req);
+  my $dom = XML::LibXML->load_html(
+    string          => $resp->content,
+    recover         => 1,
+    suppress_errors => 0,
+  );
+  foreach ($dom->findnodes("//tr/td[1]")->to_literal_list)
+  {
+    $pop_list{$_} = 1;
+  }
+}
+
+# Validate the results, check for missing PoPs,
+# set the exit status
+sub check_results
+{
+  my $i, $j;
+  # if we are missing any PoPs, escalate the exit status to warning
+  if ( defined $validate_pops )
+  {
+    get_pop_list();
+    my %checked_pops = ();
+    foreach my $ip (keys %ip_list)
+    {
+      $checked_pops{ $ip_list{$ip}{pop} } = 1;
+    }
+    my @missing = ();
+    foreach my $pop (keys %pop_list)
+    {
+      push(@missing, $pop) unless exists $checked_pops{$pop};
+    } 
+    if ( scalar(@missing) > 0 )
+    {
+      escalate_exit_status(1);
+      print "WARNING: Missing PoPs in this check:\n";
+      for ($i = 0 ; $i < @missing ; )
+      {
+        for ($j = 0 ; $j < 8 ; $j++, $i++ )
+        {
+          printf "%-9s ", $missing[$i];
+        }
+        print "\n";
+      }
+    }    
+  }
+
+  # Check HTTP status codes
+  if ( $found_http_error > 0 )
+  {
+    print "PoPs with HTTP errors:\n";
+    foreach my $ip (%ip_list)
+    {
+      if ( $ip_list{$ip}{http_status} >= 500 )
+      {
+        print "$ip ($ip_list{$ip}{pop}): HTTP $ip_list{$ip}{http_status}\n";
+      }
+    }
+  }
+}
+
+# Print out any errors from PoPs, HTTP status,
+# and then exit this script with an OpsView
+# compatible exit code for error/warning
+sub print_errors
+{
+  
+}
+# Optional command line flags to print extra stats
+sub print_statistics
+{
+  if ( $print_ip_stats )
+  {
+    print "Per-IP Statistics\n";
+    # Sort by elapsed time, asc
+    my @keys = sort { $ip_list{$a}{elapsed} <=> $ip_list{$b}{elapsed} } keys %ip_list;
+    foreach (@keys)
+    {
+      print $_ . " " . $ip_list{$_}{elapsed} . "\n";
+    }
+    for (my $i = 0 ; $i < scalar(keys %ip_list) ; $i++ )
+    {
+      printf "%-15s%-8s%8sms\n", $keys[$i + $j], $ip_list{ $keys[$i + $j] }{pop}, $ip_list{ $keys[$i + $j] }{elapsed};
+    }
+  }
+  if ( $print_pop_stats )
+  {
+    print "Per-PoP Statistics\n";
+    # Assemble a new hash of per-pop averages
+    my %pops = ();
+    # init data structure
+    foreach my $ip (keys %ip_list)
+    {
+      $pops{ $ip_list{$ip}{pop} } = ();
+      $pops{ $ip_list{$ip}{pop} }{elapsed} = 0;
+      $pops{ $ip_list{$ip}{pop} }{count} = 0;
+    }
+    # tally counts
+    foreach my $ip (keys %ip_list)
+    {
+      $pops{ $ip_list{$ip}{pop} }{elapsed} += $ip_list{$ip}{elapsed};
+      $pops{ $ip_list{$ip}{pop} }{count}++;
+    }
+    # calc averages
+    foreach my $pop ( keys %pops )
+    {
+      $pops{$pop}{avg} = int ($pops{$pop}{elapsed} / $pops{$pop}{count});
+    }
+    foreach my $pop ( sort { $pops{$a}{avg} <=> $pops{$b}{avg} } keys %pops )
+    {
+      printf "%-8s%8sms\n", $pop, $pops{$pop}{avg};
+    } 
+  }
+}
+# Run the curl call 
+sub run_curl
+{
+  (my $ip) = @_;
+
+  my @args = ();
+  # quote each arg for passthrough
+  foreach (@ARGV)
+  {
+    push(@args, "\"$_\"");
+  }
+  # Assume the URI is the last arg, even though curl
+  # is pretty loose with this
+  my $uri = URI->new($args[ @args - 1]);
+  my $domain = $uri->host;
+  my $port = $uri->port;
+  if ($random)
+  {
+    $uri->query_form(_ => int(rand(1000000)));
+  }
+  my $curl_args = "";
+  if ( @args > 2 )
+  {
+    $curl_args = join(" ", @args[0..(@args - 2)]);
+  }
+  my $cmd = "curl -si --resolve ${domain}:${port}:${ip} $curl_args $uri";
+
+  debug "$cmd";
+  my $start = [gettimeofday];
+
+  my @lines = `$cmd`;
+  my $elapsed = int (tv_interval($start) * 1000);
+
+  map { s/[\r\n\s]$//g; } @lines;
+
+  debug "$_" foreach (@lines);
+
+  (my $pop) =  map /^x-amz-cf-pop:\s*(.+)$/, @lines;
+
+  (my $http_status) = $lines[0] =~ /\s+(\d+)\s*$/;
+  $http_status = int $http_status;
+  if ( $http_status >= 500 )
+  {
+    verbose "Error from $ip";
+    verbose "$_" foreach (@lines);
+    $found_http_error++;
+    escalate_exit_status(2);
+  } 
+  ($ip_list{$ip}{http_status}) = $http_status;
+  $ip_list{$ip}{elapsed} = $elapsed;
+  $ip_list{$ip}{pop} = $pop;
+}
+
+# Grab the list if IPs from the RIPE measurement
+sub get_ip_list
+{
+  # Override from local file
+  if ( defined $ip_list_input && $ip_list_input ne "" )
+  {
+    %ip_list = %{ load_text_file($ip_list_input) };
+    return;
+  }
+  my $url = "https://atlas.ripe.net/api/v2/measurements/$msm_id/latest";
+  my $req = HTTP::Request->new(GET => $url);
+  $req->content_type('application/json');
+  $req->header(Authorization => "Key $key") if ($key);
+  my $resp = $ua->request($req);
+  if ( $resp->code != 200 )
+  {
+    print "Error retrieving RIPE measurement: " . $resp->content . "\n";
+    exit 1;
+  } 
+  my $obj = json_decode($resp->content);
+  foreach my $probe (@{ $obj })
+  {
+    debug "Probe ID " . $probe->{prb_id};
+    foreach my $result (@{ $probe->{resultset} })
+    {
+      my $abuf = $result->{result}->{abuf};
+      next unless ($abuf);
+      my $ips = decode_dns($abuf);
+      foreach my $ip (@{$ips})
+      {
+        debug "\t$ip";
+        $ip_list{$ip} = ();
+      }
+    }
+  }
+}
+# decode a RIPE Atlas DNS abuf and return an array reference
+# to the list of IP addresses
+sub decode_dns
+{
+  (my $base64) = @_;
+  my @ips = ();
+  my $data = decode_base64($base64);
+  my $packet = Net::DNS::Packet->new(\$data);
+  my @answer = $packet->answer;
+  foreach (@answer)
+  {
+    if ( $_->type eq "A" )
+    {
+      push(@ips, $_->address);
+    }
+  }
+  return \@ips;
+}
+
+# Small helper for decoding JSON
+sub json_decode
+{
+  (my $text) = @_;
+  my $obj;
+  eval
+  {
+    $obj = decode_json($text);
+  };
+  if ($@)
+  {
+    print "JSON decode error: $@\n";
+    print "$text\n";
+    exit 1;
+  }
+  return $obj;
+}
+# If the given status is greater than
+# the current $exit_status, set it
+sub escalate_exit_status
+{
+  (my $status) = @_;
+  $status = int $status;
+  if ( $status > $exit_status )
+  {
+    $exit_status = $status;
+  }
+}
+
+# For input parameters, load a text file of
+# values, one per line, and return a hash ref
+# of the values as keys
+sub load_text_file
+{
+  (my $filename) = @_;
+  open(my $fd, $filename) or die "Can't open file $filename $!";
+  my %ret = ();
+  foreach(<$fd>)
+  {
+    chomp;
+    $ret{ $_ } = 1;
+  }
+  close($fd);
+  return \%ret;
+}
+
+sub debug($)
+{
+  print STDERR "$_[0]\n" if ($debug);
+}
+sub verbose($)
+{
+  print STDERR "$_[0]\n" if ($debug || $verbose);
+}
+# Perl pod documentation
+__END__
+
+=head1 NAME
+
+cloudfront_curl
+
+=head1 SYNOPSIS
+
+cloudfront_curl [options] -- [curl options] <URL>
+
+A curl wrapper to CloudFront PoP edge nodes.  Tailored to be an OpsView/Nagios monitoring script.
+
+=item * Accumulates a list of IP PoP addresses from a RIPE Atlas DNS measurement
+  using probes around the US and Canada
+
+=item * Run a curl call with any extra parameters provided, prepending --resolve to the appropriate
+   PoP IP address
+
+=item * Grab the x-amz-cf-pop response header, store timings for each PoP
+
+=item * L<Look up the PoP location|https://www.feitsui.com/en/blog/page/3>
+
+=item * print out statistics after all HTTP requests are finished
+
+=item * exit with a success/warning/error status if any requests failed
+
+=head1 REQUIRED PACKAGES
+
+=over 4
+
+=item * Getopt::Long (perl-Getopt-Long)
+
+=item * Pod::Usage (perl-Pod-Usage)
+
+=item * JSON (perl-JSON)
+
+=item * Time::HiRes (perl-Time-HiRes)
+
+=item * HTTP::Request (perl-libwww-perl)
+
+=item * LWP::UserAgent (perl-libwww-perl)
+
+=item * URI (perl-URI)
+
+=item * Net::DNS (libnet-dns-perl)
+
+=item * XML::LibXML (libxml-libxml-perl)
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--help>
+
+Show usage information
+
+=item B<--man>
+
+Show the full manual page.
+
+=item B<CURL OPTIONS> URL
+
+You may add extra options to curl.  For example, to add request headers:
+
+  $ cloudfront_curl -- -H "Authorization: 1234" https://my-cdn.example.com
+
+You only need the B<--> separator with extra options.  The most simple
+execution of this script might look like
+
+  $ cloudfront_curl https://my-cdn.example.com
+
+=item B<--msm_id> <MEASUREMENT ID>
+
+By default, cloudfront_curl uses a RIPE Atlas measurement that is publicly available,
+and contains the DNS lookups for PoP locations across the US and Canada.
+
+If you want to create your own measurement, specify the ID here.
+
+=item B<--key> <RIPE API KEY>
+
+If you've created your own private measurement, provide your RIPE Atlas API key
+
+=item B<--verbose> B<-b> 
+
+By default, cloudfront_curl is pretty quiet, only printing errors and warnings
+for use with monitoring checks.  Turn on extra output with --verbose
+
+=item B<--debug> B<-d>
+
+Turn on very detailed debugging messages for each PoP location
+
+=item B<--random>
+
+Append a random jQuery-like I<_=12345678> random GET query to each CloudFront
+curl call.  This allows you to enforce a cache miss on each PoP location to 
+test the added latency of hitting the origin.
+
+Without this parameter, repeated calls will most likely cause a cache hit.
+
+=item B<--print_ip_stats>
+
+Print some request time statistics for each IP address hit with cloudfront_curl.
+
+=item B<--print_pop_stats>
+
+Similar to B<--print_ip_stats>, but aggregate the timings and show averages 
+for each PoP location hit.
+
+=item B<--validate_pops> [FILE INPUT]
+
+After running the curl calls, validate that we actually hit all of the expected
+PoP locations.  If no B<FILE INPUT> is provided, the valid list of PoPs are
+queried from L<an online list|https://www.feitsui.com/en/blog/page/3>.
+
+If some PoP locations are missed, return with a WARNING exit status.
+
+The file format is one entry per line.
+
+Tip:  If you have CloudFront logging to S3 enabled, use this Athena
+query to pull an active list of your PoPs:
+
+  SELECT location, status, count(*) as hit_count 
+  FROM "my_cdn" 
+  group by location, status order by status desc
+
+=item B<--ip_list> <FILE INPUT>
+
+By default, the list of PoP location IP addresses are pulled from a RIPE
+Atlas measurement.  Override this with a local file, one IP address 
+entry per line.
+
+Tip: If you have ELB access logs, the CloudFront IP addresses should
+be in there in the I<client_ip> field.
+
+=back
+
+=cut
+
+
