@@ -1,8 +1,26 @@
 =head1 NAME
 
+cloudfront_curl
+
 =head1 SYNOPSIS
 
 cloudfront_curl [options] -- [curl options] <URL>
+
+A curl wrapper to CloudFront PoP edge nodes.  Tailored to be an OpsView/Nagios monitoring script.
+
+=item * Accumulates a list of IP PoP addresses from a RIPE Atlas DNS measurement
+  using probes around the US and Canada
+
+=item * Run a curl call with any extra parameters provided, prepending --resolve to the appropriate
+   PoP IP address
+
+=item * Grab the x-amz-cf-pop response header, store timings for each PoP
+
+=item * L<Look up the PoP location|https://www.feitsui.com/en/blog/page/3>
+
+=item * print out statistics after all HTTP requests are finished
+
+=item * exit with a success/warning/error status if any requests failed
 
 =head1 REQUIRED PACKAGES
 
@@ -22,6 +40,10 @@ cloudfront_curl [options] -- [curl options] <URL>
 
 =item * URI (perl-URI)
 
+=item * Net::DNS (libnet-dns-perl)
+
+=item * XML::LibXML (libxml-libxml-perl)
+
 =back
 
 =head1 OPTIONS
@@ -35,6 +57,80 @@ Show usage information
 =item B<--man>
 
 Show the full manual page.
+
+=item B<CURL OPTIONS> URL
+
+You may add extra options to curl.  For example, to add request headers:
+
+  $ cloudfront_curl -- -H "Authorization: 1234" https://my-cdn.example.com
+
+You only need the B<--> separator with extra options.  The most simple
+execution of this script might look like
+
+  $ cloudfront_curl https://my-cdn.example.com
+
+=item B<--msm_id> <MEASUREMENT ID>
+
+By default, cloudfront_curl uses a RIPE Atlas measurement that is publicly available,
+and contains the DNS lookups for PoP locations across the US and Canada.
+
+If you want to create your own measurement, specify the ID here.
+
+=item B<--key> <RIPE API KEY>
+
+If you've created your own private measurement, provide your RIPE Atlas API key
+
+=item B<--verbose> B<-b> 
+
+By default, cloudfront_curl is pretty quiet, only printing errors and warnings
+for use with monitoring checks.  Turn on extra output with --verbose
+
+=item B<--debug> B<-d>
+
+Turn on very detailed debugging messages for each PoP location
+
+=item B<--random>
+
+Append a random jQuery-like I<_=12345678> random GET query to each CloudFront
+curl call.  This allows you to enforce a cache miss on each PoP location to 
+test the added latency of hitting the origin.
+
+Without this parameter, repeated calls will most likely cause a cache hit.
+
+=item B<--print_ip_stats>
+
+Print some request time statistics for each IP address hit with cloudfront_curl.
+
+=item B<--print_pop_stats>
+
+Similar to B<--print_ip_stats>, but aggregate the timings and show averages 
+for each PoP location hit.
+
+=item B<--validate_pops> [FILE INPUT]
+
+After running the curl calls, validate that we actually hit all of the expected
+PoP locations.  If no B<FILE INPUT> is provided, the valid list of PoPs are
+queried from L<an online list|https://www.feitsui.com/en/blog/page/3>.
+
+If some PoP locations are missed, return with a WARNING exit status.
+
+The file format is one entry per line.
+
+Tip:  If you have CloudFront logging to S3 enabled, use this Athena
+query to pull an active list of your PoPs:
+
+  SELECT location, status, count(*) as hit_count 
+  FROM "my_cdn" 
+  group by location, status order by status desc
+
+=item B<--ip_list> <FILE INPUT>
+
+By default, the list of PoP location IP addresses are pulled from a RIPE
+Atlas measurement.  Override this with a local file, one IP address 
+entry per line.
+
+Tip: If you have ELB access logs, the CloudFront IP addresses should
+be in there in the I<client_ip> field.
 
 =back
 
