@@ -385,9 +385,11 @@ cloudfront_curl
 
 =head1 SYNOPSIS
 
-cloudfront_curl [options] -- [curl options] <URL>
+cloudfront_curl [OPTIONS] -- [CURL_OPTIONS] <URL>
 
 A curl wrapper to CloudFront PoP edge nodes.  Tailored to be an OpsView/Nagios monitoring script.
+
+=over 
 
 =item * Accumulates a list of IP PoP addresses from a RIPE Atlas DNS measurement
   using probes around the US and Canada
@@ -402,6 +404,8 @@ A curl wrapper to CloudFront PoP edge nodes.  Tailored to be an OpsView/Nagios m
 =item * print out statistics after all HTTP requests are finished
 
 =item * exit with a success/warning/error status if any requests failed
+
+=back 
 
 =head1 REQUIRED PACKAGES
 
@@ -439,7 +443,7 @@ Show usage information
 
 Show the full manual page.
 
-=item B<CURL OPTIONS> URL
+=item B<CURL_OPTIONS> URL
 
 You may add extra options to curl.  For example, to add request headers:
 
@@ -452,7 +456,7 @@ execution of this script might look like
 
 =item B<--msm_id> <MEASUREMENT ID>
 
-By default, cloudfront_curl uses a RIPE Atlas measurement that is publicly available,
+By default, cloudfront_curl uses a RIPE Atlas measurement that is publicly available
 and contains the DNS lookups for PoP locations across the US and Canada.
 
 If you want to create your own measurement, specify the ID here.
@@ -514,6 +518,22 @@ Tip: If you have ELB access logs, the CloudFront IP addresses should
 be in there in the I<client_ip> field.
 
 =back
+
+=head1 EXAMPLES
+
+=head2 Validate a list of PoP locations
+
+There is a list of USA and Canada PoP names in the B<lists/> directory.
+
+  $ ./cloudfront_curl --validate_pops ./lists/validate_us_ca.txt \
+    --verbose --print_ip_stats --print_pop_stats \
+    https://my-cdn.example.com
+ 
+=head2 Add an Authorization header to your request
+
+Add any extra curl parameters after the end-of-options marker:
+
+  $ ./cloudfront_curl --verbose -- -H "Authorization: 1234" https://my-cdn.example.com
 
 =cut
 
