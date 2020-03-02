@@ -275,7 +275,7 @@ sub run_curl
 
   debug "$_" foreach (@lines);
 
-  (my $pop) =  map /^x-amz-cf-pop:\s*(.+)$/, @lines;
+  (my $pop) =  map /^x-amz-cf-pop:\s*(.+)$/i, @lines;
 
   (my $http_status) = $lines[0] =~ /\s+(\d{3})(\s|$)/;
   $http_status = int $http_status;
