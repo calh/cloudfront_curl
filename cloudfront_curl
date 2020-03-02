@@ -425,9 +425,9 @@ A curl wrapper to CloudFront PoP edge nodes.  Tailored to be an OpsView/Nagios m
 
 =item * URI (perl-URI)
 
-=item * Net::DNS (libnet-dns-perl)
+=item * Net::DNS (libnet-dns-perl or perl-Net-DNS)
 
-=item * XML::LibXML (libxml-libxml-perl)
+=item * XML::LibXML (libxml-libxml-perl or perl-XML-LibXML)
 
 =back
 
