@@ -251,7 +251,7 @@ sub run_curl
 
   (my $pop) =  map /^x-amz-cf-pop:\s*(.+)$/, @lines;
 
-  (my $http_status) = $lines[0] =~ /\s+(\d+)\s*$/;
+  (my $http_status) = $lines[0] =~ /\s+(\d{3})(\s|$)/;
   $http_status = int $http_status;
   if ( $http_status >= 500 )
   {
