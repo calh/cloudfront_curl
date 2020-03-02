@@ -255,7 +255,7 @@ sub run_curl
   my $port = $uri->port;
   if ($random)
   {
-    $uri->query_form(_ => int(rand(1000000)));
+    $uri->query_form($uri->query_form, '_', int(rand(1000000)));
   }
   my $curl_args = "";
   if ( @args > 2 )
