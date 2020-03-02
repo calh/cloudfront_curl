@@ -167,6 +167,26 @@ sub check_results
     }    
   }
 
+  # Calculate the average elapsed time
+  my $elapsed = 0;
+  my $count = 0;
+  my $max = 0;
+  my $min = 999999999;
+  foreach my $ip (keys %ip_list)
+  {
+    $elapsed += $ip_list{$ip}{elapsed};
+    $count++;
+    if ( $ip_list{$ip}{elapsed} > $max )
+    {
+      $max = $ip_list{$ip}{elapsed};
+    }
+    if ( $ip_list{$ip}{elapsed} < $min )
+    {
+      $min = $ip_list{$ip}{elapsed};
+    }
+  }
+  my $avg = int( $elapsed / $count );
+
   # Check HTTP status codes
   if ( $found_http_error > 0 )
   {
@@ -179,6 +199,11 @@ sub check_results
         print "$ip (" . $ip_list{$ip}{pop} . "): HTTP " . $ip_list{$ip}{http_status} . "\n";
       }
     }
+  }
+
+  if ( $exit_status == 0 )
+  {
+    print "Success: min: ${min}ms avg: ${avg}ms max: ${max}ms\n";  
   }
 }
 
