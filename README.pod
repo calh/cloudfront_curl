@@ -116,10 +116,14 @@ Without this parameter, repeated calls will most likely cause a cache hit.
 
 Print some request time statistics for each IP address hit with cloudfront_curl.
 
+If --verbose is supplied, print these statistics
+
 =item B<--print_pop_stats>
 
 Similar to B<--print_ip_stats>, but aggregate the timings and show averages 
 for each PoP location hit.
+
+If --verbose is supplied, print these statistics
 
 =item B<--validate_pops> [FILE INPUT]
 
