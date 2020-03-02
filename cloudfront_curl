@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # A curl wrapper to CloudFront PoP edge nodes
 #
-# * Accumulates a list of IP PoP addresses from a RIPE Atlas DNS measurement
+# * Accumulates a list of PoP IP addresses from a RIPE Atlas DNS measurement
 #   using probes around the US
 #
 # * Run a curl call with any extra parameters provided, prepending --resolve to the appropriate
@@ -391,7 +391,7 @@ A curl wrapper to CloudFront PoP edge nodes.  Tailored to be an OpsView/Nagios m
 
 =over 
 
-=item * Accumulates a list of IP PoP addresses from a RIPE Atlas DNS measurement
+=item * Accumulates a list of PoP IP addresses from a RIPE Atlas DNS measurement
   using probes around the US and Canada
 
 =item * Run a curl call with any extra parameters provided, prepending --resolve to the appropriate
@@ -465,7 +465,7 @@ If you want to create your own measurement, specify the ID here.
 
 If you've created your own private measurement, provide your RIPE Atlas API key
 
-=item B<--verbose> B<-b> 
+=item B<--verbose> B<-v> 
 
 By default, cloudfront_curl is pretty quiet, only printing errors and warnings
 for use with monitoring checks.  Turn on extra output with --verbose
