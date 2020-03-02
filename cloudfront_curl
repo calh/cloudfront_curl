@@ -185,7 +185,7 @@ sub check_results
 # Optional command line flags to print extra stats
 sub print_statistics
 {
-  if ( $print_ip_stats )
+  if ( $print_ip_stats || $verbose )
   {
     print "Per-IP Statistics\n";
     # Sort by elapsed time, asc
@@ -195,7 +195,7 @@ sub print_statistics
       printf "%-17s%-8s%8sms\n", $keys[$i + $j], $ip_list{ $keys[$i + $j] }{pop}, $ip_list{ $keys[$i + $j] }{elapsed};
     }
   }
-  if ( $print_pop_stats )
+  if ( $print_pop_stats || $verbose )
   {
     print "Per-PoP Statistics\n";
     # Assemble a new hash of per-pop averages
@@ -542,10 +542,14 @@ Without this parameter, repeated calls will most likely cause a cache hit.
 
 Print some request time statistics for each IP address hit with cloudfront_curl.
 
+If --verbose is supplied, print these statistics
+
 =item B<--print_pop_stats>
 
 Similar to B<--print_ip_stats>, but aggregate the timings and show averages 
 for each PoP location hit.
+
+If --verbose is supplied, print these statistics
 
 =item B<--validate_pops> [FILE INPUT]
 
