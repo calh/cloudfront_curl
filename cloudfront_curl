@@ -34,7 +34,7 @@ my $man;
 my $key;
 my $msm_id;
 my $ua;
-my $default_msm_id = 24128306;
+my $default_msm_id = 24148734;
 my %ip_list = ();
 my $verbose;
 my $debug;
@@ -74,15 +74,12 @@ get_ip_list();
 
 foreach my $ip (keys %ip_list)
 {
-  verbose "$ip";
   run_curl($ip);
 }
 
-check_results();
-
 print_statistics();
 
-print_errors();
+check_results();
 
 exit($exit_status);
 
@@ -169,13 +166,6 @@ sub check_results
   }
 }
 
-# Print out any errors from PoPs, HTTP status,
-# and then exit this script with an OpsView
-# compatible exit code for error/warning
-sub print_errors
-{
-  
-}
 # Optional command line flags to print extra stats
 sub print_statistics
 {
@@ -184,13 +174,9 @@ sub print_statistics
     print "Per-IP Statistics\n";
     # Sort by elapsed time, asc
     my @keys = sort { $ip_list{$a}{elapsed} <=> $ip_list{$b}{elapsed} } keys %ip_list;
-    foreach (@keys)
-    {
-      print $_ . " " . $ip_list{$_}{elapsed} . "\n";
-    }
     for (my $i = 0 ; $i < scalar(keys %ip_list) ; $i++ )
     {
-      printf "%-15s%-8s%8sms\n", $keys[$i + $j], $ip_list{ $keys[$i + $j] }{pop}, $ip_list{ $keys[$i + $j] }{elapsed};
+      printf "%-17s%-8s%8sms\n", $keys[$i + $j], $ip_list{ $keys[$i + $j] }{pop}, $ip_list{ $keys[$i + $j] }{elapsed};
     }
   }
   if ( $print_pop_stats )
@@ -247,6 +233,8 @@ sub run_curl
   {
     $curl_args = join(" ", @args[0..(@args - 2)]);
   }
+  printf "Checking %-20s","$ip..." if ($verbose);
+
   my $cmd = "curl -si --resolve ${domain}:${port}:${ip} $curl_args $uri";
 
   debug "$cmd";
@@ -254,6 +242,8 @@ sub run_curl
 
   my @lines = `$cmd`;
   my $elapsed = int (tv_interval($start) * 1000);
+
+  printf "%8s\n", "${elapsed}ms" if ($verbose);
 
   map { s/[\r\n\s]$//g; } @lines;
 
@@ -284,7 +274,8 @@ sub get_ip_list
     %ip_list = %{ load_text_file($ip_list_input) };
     return;
   }
-  my $url = "https://atlas.ripe.net/api/v2/measurements/$msm_id/latest";
+  # 10 history revisions is the max for a single API call
+  my $url = "https://atlas.ripe.net/api/v2/measurements/$msm_id/latest?versions=10";
   my $req = HTTP::Request->new(GET => $url);
   $req->content_type('application/json');
   $req->header(Authorization => "Key $key") if ($key);
@@ -310,6 +301,7 @@ sub get_ip_list
       }
     }
   }
+  verbose "Found " . scalar(keys(%ip_list)) . " IPs from RIPE Atlas\n";
 }
 # decode a RIPE Atlas DNS abuf and return an array reference
 # to the list of IP addresses
