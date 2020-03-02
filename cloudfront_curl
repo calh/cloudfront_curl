@@ -498,7 +498,7 @@ You may add extra options to curl.  For example, to add request headers:
 
   $ cloudfront_curl -- -H "Authorization: 1234" https://my-cdn.example.com
 
-You only need the B<--> separator with extra options.  The most simple
+You only need the B<--> end-of-options separator with extra curl options.  The most simple
 execution of this script might look like
 
   $ cloudfront_curl https://my-cdn.example.com
