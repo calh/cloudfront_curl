@@ -16,7 +16,7 @@
 # * exit with a success/warning/error status if any requests failed
 #
 # Run with --help or --man for more detailed info
-
+$| = 1;
 use MIME::Base64;
 use Net::DNS;
 use Net::DNS::Packet;
@@ -28,6 +28,8 @@ use HTTP::Request;
 use LWP::UserAgent;
 use URI;
 use XML::LibXML;
+use threads;
+use threads::shared;
 
 my $help;
 my $man;
@@ -35,7 +37,7 @@ my $key;
 my $msm_id;
 my $ua;
 my $default_msm_id = 24148734;
-my %ip_list = ();
+my %ip_list : shared = ();
 my $verbose;
 my $debug;
 my $random;
@@ -48,7 +50,8 @@ my $validate_pops;
 #  * 2 => error
 my $exit_status = 0;
 my $ip_list_input;
-my $found_http_error = 0;
+my $found_http_error : shared = 0;
+my $threads;
 
 GetOptions( 'help|?' => \$help,
   'man' => \$man,
@@ -60,7 +63,8 @@ GetOptions( 'help|?' => \$help,
   'print_ip_stats' => \$print_ip_stats,
   'print_pop_stats' => \$print_pop_stats,
   'validate_pops:s' => \$validate_pops,
-  'ip_list=s' => \$ip_list_input
+  'ip_list=s' => \$ip_list_input,
+  't|threads=i' => \$threads
 ) or pod2usage(2);
 pod2usage(1) if $help;
 pod2usage(-exitstatus => 1, -verbose => 2) if $man;
@@ -74,8 +78,15 @@ get_ip_list();
 
 foreach my $ip (keys %ip_list)
 {
-  run_curl($ip);
+  my $this_thread = threads->new(\&run_curl, $ip);
+  my $running = threads->list(threads::running);
+  if ( $running >= $threads )
+  {
+    wait_up($threads);
+  }
 }
+# Wait for all threads to finish
+wait_up(0);
 
 print_statistics();
 
@@ -90,6 +101,10 @@ sub init_args
 {
   $ua = LWP::UserAgent->new( keep_alive => 1 );
   $msm_id = $default_msm_id unless ($msm_id);
+  unless (defined($threads) )
+  {
+    $threads = 1;
+  }
 }
 
 # Scrape this page which has an updated list of PoP names.
@@ -155,12 +170,13 @@ sub check_results
   # Check HTTP status codes
   if ( $found_http_error > 0 )
   {
+    escalate_exit_status(2);
     print "PoPs with HTTP errors:\n";
-    foreach my $ip (%ip_list)
+    foreach my $ip (keys %ip_list)
     {
       if ( $ip_list{$ip}{http_status} >= 500 )
       {
-        print "$ip ($ip_list{$ip}{pop}): HTTP $ip_list{$ip}{http_status}\n";
+        print "$ip (" . $ip_list{$ip}{pop} . "): HTTP " . $ip_list{$ip}{http_status} . "\n";
       }
     }
   }
@@ -213,6 +229,19 @@ sub run_curl
 {
   (my $ip) = @_;
 
+  # Init shared hash
+  unless ( defined $ip_list{$ip} &&
+    defined $ip_list{$ip}{http_status} &&
+    defined $ip_list{$ip}{elapsed} &&
+    defined $ip_list{$ip}{pop} 
+  )
+  {
+    $ip_list{$ip} = &share({});
+    $ip_list{$ip}{http_status} = 0;
+    $ip_list{$ip}{elapsed} = 0;
+    $ip_list{$ip}{pop} = "";
+  }
+
   my @args = ();
   # quote each arg for passthrough
   foreach (@ARGV)
@@ -233,7 +262,6 @@ sub run_curl
   {
     $curl_args = join(" ", @args[0..(@args - 2)]);
   }
-  printf "Checking %-20s","$ip..." if ($verbose);
 
   my $cmd = "curl -si --resolve ${domain}:${port}:${ip} $curl_args $uri";
 
@@ -242,8 +270,6 @@ sub run_curl
 
   my @lines = `$cmd`;
   my $elapsed = int (tv_interval($start) * 1000);
-
-  printf "%8s\n", "${elapsed}ms" if ($verbose);
 
   map { s/[\r\n\s]$//g; } @lines;
 
@@ -258,11 +284,12 @@ sub run_curl
     verbose "Error from $ip";
     verbose "$_" foreach (@lines);
     $found_http_error++;
-    escalate_exit_status(2);
   } 
   ($ip_list{$ip}{http_status}) = $http_status;
   $ip_list{$ip}{elapsed} = $elapsed;
   $ip_list{$ip}{pop} = $pop;
+  printf "%-20s%8s\n", $ip, "${elapsed}ms" if ($verbose);
+
 }
 
 # Grab the list if IPs from the RIPE measurement
@@ -367,6 +394,24 @@ sub load_text_file
   close($fd);
   return \%ret;
 }
+sub wait_up
+{
+  my ($until) = @_;
+  $running = threads->list(threads::running);
+  my $zerocount = 0;
+  while( $running >= $until)
+  {
+    my @joinable = threads->list(threads::joinable);
+    foreach $join (@joinable)
+    {
+      $join->join
+    }
+    usleep(20000);
+    $running = threads->list(threads::running);
+    $zerocount++ if ( $running == 0 );
+    last if ( $zerocount == 5 );
+  }
+}
 
 sub debug($)
 {
@@ -429,6 +474,10 @@ A curl wrapper to CloudFront PoP edge nodes.  Tailored to be an OpsView/Nagios m
 
 =item * XML::LibXML (libxml-libxml-perl or perl-XML-LibXML)
 
+=item * threads (perl-threads)
+
+=item * threads::shared (perl-threads-shared)
+
 =back
 
 =head1 OPTIONS
@@ -473,6 +522,13 @@ for use with monitoring checks.  Turn on extra output with --verbose
 =item B<--debug> B<-d>
 
 Turn on very detailed debugging messages for each PoP location
+
+=item B<--threads> <INTEGER>
+
+Thread out the curl calls for a faster runtime.  Default is 1 thread.  If OpsView
+times out from its default 60 second agent timeout, increase the thread count
+enough to finish the check under the allotted time.  Don't go too far though, since
+too many concurrent HTTP checks on the client could adversely affect the check.
 
 =item B<--random>
 

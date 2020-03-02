@@ -48,6 +48,10 @@ A curl wrapper to CloudFront PoP edge nodes.  Tailored to be an OpsView/Nagios m
 
 =item * XML::LibXML (libxml-libxml-perl or perl-XML-LibXML)
 
+=item * threads (perl-threads)
+
+=item * threads::shared (perl-threads-shared)
+
 =back
 
 =head1 OPTIONS
@@ -92,6 +96,13 @@ for use with monitoring checks.  Turn on extra output with --verbose
 =item B<--debug> B<-d>
 
 Turn on very detailed debugging messages for each PoP location
+
+=item B<--threads> <INTEGER>
+
+Thread out the curl calls for a faster runtime.  Default is 1 thread.  If OpsView
+times out from its default 60 second agent timeout, increase the thread count
+enough to finish the check under the allotted time.  Don't go too far though, since
+too many concurrent HTTP checks on the client could adversely affect the check.
 
 =item B<--random>
 

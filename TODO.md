@@ -12,6 +12,3 @@ Just some items for features that I'd like to add, but haven't dedicated the tim
 * Add flags for `--warning_pop_latency` and `--error_pop_latency` to flag an exit code
   if any PoP IP address has a latency above the given threshold.  (in milliseconds)
 
-* Provide a flag for threading out the HTTP checks?  (And the number of threads)  This
-  is potentially a double-edged sword -- too high of a concurrency will adversely affect
-  the timings.
