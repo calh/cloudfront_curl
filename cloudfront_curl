@@ -125,11 +125,11 @@ sub get_pop_list
   my $dom = XML::LibXML->load_html(
     string          => $resp->content,
     recover         => 1,
-    suppress_errors => 0,
+    suppress_errors => 1,
   );
-  foreach ($dom->findnodes("//tr/td[1]")->to_literal_list)
+  foreach my $context ($dom->findnodes("//tr/td[1]"))
   {
-    $pop_list{$_} = 1;
+    $pop_list{ $context->textContent } = 1;
   }
 }
 
