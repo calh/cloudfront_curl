@@ -263,7 +263,7 @@ sub run_curl
     $curl_args = join(" ", @args[0..(@args - 2)]);
   }
 
-  my $cmd = "curl -si --resolve ${domain}:${port}:${ip} $curl_args $uri";
+  my $cmd = "curl -si --resolve ${domain}:${port}:${ip} $curl_args \"$uri\"";
 
   debug "$cmd";
   my $start = [gettimeofday];
