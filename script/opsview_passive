@@ -1,0 +1,36 @@
+#!/bin/bash
+# wrapper to run cloudfront_curl as an OpsView passive check
+# If you have problems with staying under the 60 second timeout
+# with opsview active checks, create a new passive check for a host
+# and verify the results.sock file location below.
+#   https://knowledge.opsview.com/v6.2/docs/passive-checks
+#
+# Create a cron job entry to call opsview_passive like:
+# */5 * * * * opsview_passive "my-cdn.example.com" "CloudFront service check" "https://my-cdn.example.com"
+
+# Change to your command socket
+sock="/opt/opsview/var/results.sock"
+
+# Location of cloudfront_curl
+cloudfront_curl="$(readlink -f $(dirname $0)/.. )/cloudfront_curl"
+
+if [ "$1" == "" ]; then
+  echo "USAGE $0 <opsview host> <opsview service name> <cloudfront_curl args>"
+  echo
+  echo Run cloudfront_curl and capture the output and exit status.  Write a
+  echo service check result to the OpsView results.sock for a given passive
+  echo status check.
+  echo
+  exit
+fi
+
+# Timestamp in UNIX epoch of the check result
+timestamp=$( date '+%s' )
+
+host=$1
+service=$2
+shift 2
+output=$($cloudfront_curl $@)
+return_code=$?
+
+echo "[$timestamp] PROCESS_SERVICE_CHECK_RESULT;$host;$service;$return_code;$output" > $sock

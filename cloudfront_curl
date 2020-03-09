@@ -620,6 +620,54 @@ Add any extra curl parameters after the end-of-options marker:
 
   $ ./cloudfront_curl --verbose -- -H "Authorization: 1234" https://my-cdn.example.com
 
+=head1 OPSVIEW INTEGRATION
+
+=head2 Passive Checks
+
+=over
+
+=item * Create a new OpsView host for the CDN
+
+=item * Create a new passive service check for that host
+
+=item * Attach the passive service check to the CDN host
+
+=item * Find the location of your I<results.sock> file on the machine running OpsView
+
+Use the L</script/opsview_passive> script to wrap the cloudfront_curl script.  Add a
+cronjob entry on the machine running OpsView similar to
+
+  */5 * * * * opsview_passive "my-cdn.example.com" "CloudFront service check" "https://my-cdn.example.com"  
+
+=item * Reload OpsView
+
+=back
+
+Repeat this process for additional CDNs.  The checks should run within 2 - 3 minutes and post 
+the results to the passive service.  The OpsView service definition can also define what state
+to use if the script has not run for N minutes.  (Default is UNKNOWN)
+
+=head2 Active Checks
+
+=over 
+
+=item * Create a new OpsView host for the CDN
+
+=item * Clone the cloudfront_curl repo to the machine running OpsView
+
+=item * Symlink /opt/opsview/monitoringscripts/plugins/check_cloudfront_curl to the location
+of the cloudfront_curl script
+
+=item * Create a new active service check for that host.  Add parameters to cloudfront_curl for 
+this specific CDN check. 
+
+=item * Attach the service check to the CDN host
+
+=item * Reload OpsView.  If the service check times out, add more threads with the I<--threads> 
+parameter and see if it finishes in time.
+
+It's not recommended to increase the global 60 second timeout in OpsView for plugin checks.
+
+=back
+
 =cut
-
-
