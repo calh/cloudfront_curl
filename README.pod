@@ -183,7 +183,7 @@ Add any extra curl parameters after the end-of-options marker:
 
 =item * Find the location of your I<results.sock> file on the machine running OpsView
 
-Use the L</script/opsview_passive> script to wrap the cloudfront_curl script.  Add a
+Use the I<opsview_passive> script to wrap the cloudfront_curl script.  Add a
 cronjob entry on the machine running OpsView similar to
 
   */5 * * * * opsview_passive "my-cdn.example.com" "CloudFront service check" "https://my-cdn.example.com"  
