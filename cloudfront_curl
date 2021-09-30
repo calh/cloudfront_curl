@@ -52,6 +52,7 @@ my $exit_status = 0;
 my $ip_list_input;
 my $found_http_error : shared = 0;
 my $threads;
+my $ca_file;
 
 GetOptions( 'help|?' => \$help,
   'man' => \$man,
@@ -64,7 +65,8 @@ GetOptions( 'help|?' => \$help,
   'print_pop_stats' => \$print_pop_stats,
   'validate_pops:s' => \$validate_pops,
   'ip_list=s' => \$ip_list_input,
-  't|threads=i' => \$threads
+  't|threads=i' => \$threads,
+  'ca_file=s' => \$ca_file
 ) or pod2usage(2);
 pod2usage(1) if $help;
 pod2usage(-exitstatus => 1, -verbose => 2) if $man;
@@ -100,6 +102,10 @@ exit($exit_status);
 sub init_args
 {
   $ua = LWP::UserAgent->new( keep_alive => 1 );
+  if ( $ca_file )
+  {
+    $ua->ssl_opts(SSL_ca_file => $ca_file);
+  }
   $msm_id = $default_msm_id unless ($msm_id);
   unless (defined($threads) )
   {
@@ -527,6 +533,16 @@ You only need the B<--> end-of-options separator with extra curl options.  The m
 execution of this script might look like
 
   $ cloudfront_curl https://my-cdn.example.com
+
+=item B<--ca_file> /full/path/to/ca-bundle.crt
+
+Internally, this uses the perl LWP::UserAgent module for HTTP requests to RIPE Atlas.
+If you have problems with this script showing an error that it can't contact atlas.ripe.net,
+specify the location to a freshly updated root CA bundle.
+
+For RH based distros, it's usually I</etc/pki/tls/certs/ca-bundle.crt>  For Debian 
+based distros, it's I</etc/ssl/certs/ca-certificats.crt>
+
 
 =item B<--msm_id> <MEASUREMENT ID>
 
