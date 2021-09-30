@@ -77,6 +77,16 @@ execution of this script might look like
 
   $ cloudfront_curl https://my-cdn.example.com
 
+=item B<--ca_file> /full/path/to/ca-bundle.crt
+
+Internally, this uses the perl LWP::UserAgent module for HTTP requests to RIPE Atlas.
+If you have problems with this script showing an error that it can't contact atlas.ripe.net,
+specify the location to a freshly updated root CA bundle.
+
+For RH based distros, it's usually I</etc/pki/tls/certs/ca-bundle.crt>  For Debian 
+based distros, it's I</etc/ssl/certs/ca-certificats.crt>
+
+
 =item B<--msm_id> <MEASUREMENT ID>
 
 By default, cloudfront_curl uses a RIPE Atlas measurement that is publicly available
