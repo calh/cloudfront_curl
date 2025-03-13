@@ -70,6 +70,7 @@ GetOptions( 'help|?' => \$help,
 ) or pod2usage(2);
 pod2usage(1) if $help;
 pod2usage(-exitstatus => 1, -verbose => 2) if $man;
+pod2usage(1) if $ARGV[0] eq undef;
 
 sub debug($);
 sub verbose($);
@@ -282,6 +283,11 @@ sub run_curl
   # Assume the URI is the last arg, even though curl
   # is pretty loose with this
   my $uri = URI->new($args[ @args - 1]);
+  unless ($uri->can("host"))
+  {
+    print "Malformatted URL: $args[ @args - 1]\n";
+    exit 1;
+  }
   my $domain = $uri->host;
   my $port = $uri->port;
   if ($random)
